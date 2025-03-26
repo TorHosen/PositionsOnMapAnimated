@@ -75,9 +75,56 @@
       50% { transform: scale(1.6); opacity: 0.5; }
       100% { transform: scale(1); opacity: 1; }
     }
+    /* Login overlay styles */
+    #loginOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    #loginOverlay form {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    #loginOverlay input {
+      margin: 10px 0;
+      padding: 5px;
+      width: 200px;
+    }
   </style>
 </head>
 <body>
+  <!-- Login Overlay -->
+  <div id="loginOverlay">
+    <form id="loginForm" autocomplete="on">
+      <h3>Login</h3>
+      <div>
+        <label>
+          Username:<br>
+          <input type="text" id="username" name="username" required>
+        </label>
+      </div>
+      <div>
+        <label>
+          Password:<br>
+          <input type="password" id="password" name="password" required>
+        </label>
+      </div>
+      <div>
+        <button type="submit">Login</button>
+      </div>
+    </form>
+  </div>
+  
+  <!-- Main content -->
   <div id="map">
     <!-- Watermark initially visible -->
     <div id="watermark">NOFENCE</div>
@@ -179,7 +226,7 @@
     var baseLayers = {
       'osm': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
-	maxZoom: 22  // Increase this value to allow closer zooming
+        maxZoom: 22
       }),
       'norgeskart': L.tileLayer('https://opencache.statkart.no/gatekeeper/gk/gk.open_wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=topo2&STYLE=default&TILEMATRIXSET=EPSG:3857&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png', {
         attribution: '&copy; Kartverket'
@@ -191,8 +238,8 @@
     let currentBaseLayer = baseLayers['osm'];
     currentBaseLayer.addTo(map);
 
-// Add scale control to the map
-L.control.scale({ position: 'bottomleft', maxWidth: 200, metric: true, imperial: false }).addTo(map);
+    // Add scale control to the map
+    L.control.scale({ position: 'bottomleft', maxWidth: 200, metric: true, imperial: false }).addTo(map);
 
     // Base layer control
     var layerSelectControl = L.control({position: 'topleft'});
@@ -912,11 +959,44 @@ L.control.scale({ position: 'bottomleft', maxWidth: 200, metric: true, imperial:
       // Decode the data and set it to the pastureImportArea textarea.
       const decodedData = decodeURIComponent(pastureData);
       document.getElementById('pastureImportArea').value = decodedData;
-      // Optionally, if you want the textarea to be visible, you can change its display style.
-      // document.getElementById('pastureImportArea').style.display = 'block';
       // Automatically load the pasture data into the map.
       loadPastureData();
     }
+  });
+</script>
+<!-- Login Script -->
+<script>
+  // Set your fixed username, password, and a version string.
+  const FIXED_USERNAME = 'ImNotAnAdmin';
+  const FIXED_PASSWORD = '44FourOr22';
+  // Update this version if you change the fixed credentials.
+  const LOGIN_VERSION = 'v1';
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const loginOverlay = document.getElementById('loginOverlay');
+    
+    // Only hide the login if the stored version matches.
+    if (localStorage.getItem('loggedIn') === 'true' &&
+        localStorage.getItem('loginVersion') === LOGIN_VERSION) {
+      loginOverlay.style.display = 'none';
+    }
+    
+    // Handle login form submission
+    document.getElementById('loginForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      if (username === FIXED_USERNAME && password === FIXED_PASSWORD) {
+        localStorage.setItem('loggedIn', 'true');
+        localStorage.setItem('loginVersion', LOGIN_VERSION);
+        loginOverlay.style.display = 'none';
+      } else {
+        // Clear any stored login info if incorrect
+        localStorage.removeItem('loggedIn');
+        localStorage.removeItem('loginVersion');
+        alert('Invalid credentials. Please try again.');
+      }
+    });
   });
 </script>
 </body>
