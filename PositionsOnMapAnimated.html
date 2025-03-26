@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Device Animation Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Leaflet Measure Plugin CSS (if needed) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-measure/dist/leaflet-measure.css" />
+  <style>
+    body {
+      display: flex;
+      flex-direction: row;
+      margin: 0;
+      font-family: sans-serif;
+    }
+    /* Map container */
+    #map {
+      height: 100vh;
+      width: 75%;
+      position: relative;
+    }
+    /* Watermark styling */
+    #watermark {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 100px;
+      color: rgba(0, 0, 0, 0.1);
+      pointer-events: none;
+      z-index: 1000;
+    }
+    #controls {
+      width: 25%;
+      padding: 15px;
+      background: #f9f9f9;
+      box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+      overflow-y: auto;
+    }
+    #importArea, #pastureImportArea {
+      width: 100%;
+      height: 150px;
+      display: none;
+    }
+    #deviceList, #pastureList {
+      margin-top: 20px;
+    }
+    .device-entry, .pasture-entry {
+      margin: 10px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      width: 100%;
+    }
+    .device-entry label, .pasture-entry label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .pulse-marker {
+      width: 12px;
+      height: 12px;
+      background-color: red;
+      border: 2px solid black;
+      border-radius: 50%;
+      opacity: 0.8;
+      animation: pulse 1s infinite ease-in-out;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.6); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="map">
+    <!-- Watermark initially visible -->
+    <div id="watermark">NOFENCE</div>
+  </div>
+  <div id="controls">
+    <button onclick="startAnimation()">Start</button>
+    <button onclick="pauseAnimation()">Pause</button>
+    <button onclick="rewindAnimation()">⏮ Rewind</button>
+    <!-- Clear Animation Button -->
+    <button onclick="clearAnimation()">Clear Animation</button>
+    <br><br>
+    <label>Speed:
+      <input type="range" id="speedSlider" min="1" max="100" value="10" step="1" oninput="changeSpeed(this.value)">
+    </label>
+    <br><br>
+    <label><input type="checkbox" onchange="toggleTrails(this.checked)"> Show Trails</label>
+    <br>
+    <label><input type="checkbox" onchange="toggleShortTrails(this.checked)"> Show Short Trails</label>
+    <br>
+    <!-- "Show All Positions" checkbox -->
+    <label>
+      <input type="checkbox" id="showAllPositionsCheckbox" onchange="handleShowAllPositionsChange(this.checked)"> 
+      Show All Positions
+    </label>
+    <br>
+    <!-- Checkbox for accuracy rings -->
+    <label><input type="checkbox" onchange="toggleAccuracyRings(this.checked)"> Show Accuracy Rings</label>
+    <br>
+    <!-- New: Show Message Status Bar checkbox (timeline bar) -->
+    <label>
+      <input type="checkbox" id="toggleMessageStatus" onchange="toggleTimelineBar(this.checked)">
+      Show Message Status Bar
+    </label>
+    <br><br>
+    <!-- eFenceStatus filter dropdown -->
+    <label>
+      Filter eFenceStatus:
+      <select id="fenceStatusFilter" multiple style="width:100%; height:80px;" onchange="updatePositionFilter()"></select>
+    </label>
+    <br><br>
+    <!-- Toggle button for beacon polygon -->
+    <button id="toggleBeaconPolygonBtn" onclick="toggleBeaconPolygon()">Draw Beacon Polygon</button>
+    <br><br>
+    <input type="range" id="timeSlider" min="0" max="100" value="0" style="width:100%" oninput="seekTime(this.value)" />
+    <div><span id="timestamp"></span></div>
+    <br>
+    <button onclick="toggleImportBox()">Import Positions</button>
+    <br>
+    <textarea id="importArea" placeholder="Paste CSV data here..."></textarea>
+    <br>
+    <button onclick="loadPositionData()">Load Data</button>
+    <br><br>
+    <button onclick="togglePastureImportBox()">Import Pastures</button>
+    <br>
+    <textarea id="pastureImportArea" placeholder="Paste pasture data here..."></textarea>
+    <br>
+    <button onclick="loadPastureData()">Load Pastures</button>
+    <div id="deviceList"></div>
+    <div style="margin-top: 10px;">
+      <input type="color" id="bulkColorPicker" value="#003f8a" />
+      <button onclick="setAllDeviceColors()">Set All Device Colors</button>
+    </div>
+    <div id="pastureList"></div>
+    <hr>
+    <small style="display:block; margin-top:10px; font-size:0.85em; color:#555;">
+      🐞 Report bugs to <a href="mailto:tor@nofence.no">tor@nofence.no</a>
+    </small>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet Measure Plugin JS -->
+  <script src="https://unpkg.com/leaflet-measure/dist/leaflet-measure.js"></script>
+  <script>
+    // Global variables
+    let deviceData = {}, deviceMarkers = {}, deviceLines = {}, deviceColors = {};
+    let deviceStats = {}, pastureLayers = [], pastureInfo = {};
+    let deviceVisibility = {};
+    let showTrails = false, showShortTrails = false;
+    let animationSpeed = 10;
+    let currentIndex = 0, allTimestamps = [], animationInterval = null;
+    let allPositionMarkers = [], allAccuracyRings = [];
+    // Flags
+    let allPositionsShown = false, showAccuracyRings = false;
+    // New: Flag for timeline (message status) bar visibility; default is false.
+    let showTimelineBar = false;
+    // Beacon polygon
+    let beaconPolygon = null;
+    // eFenceStatus
+    let allUniqueStatuses = new Set();
+
+    // Some bright colors for pasture polygons
+    const brightColors = ['#00FF00','#0099FF','#FF3333','#FF9900','#CC33FF','#FFFF00','#00FFFF','#FF00FF','#FF66CC','#66FF33'];
+
+    // Create the map zoomed out (whole world)
+    const map = L.map('map').setView([0, 0], 2);
+
+    // Base layers
+    var baseLayers = {
+      'osm': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+	maxZoom: 22  // Increase this value to allow closer zooming
+      }),
+      'norgeskart': L.tileLayer('https://opencache.statkart.no/gatekeeper/gk/gk.open_wmts?REQUEST=GetTile&SERVICE=WMTS&VERSION=1.0.0&LAYER=topo2&STYLE=default&TILEMATRIXSET=EPSG:3857&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png', {
+        attribution: '&copy; Kartverket'
+      }),
+      'satellite': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri'
+      })
+    };
+    let currentBaseLayer = baseLayers['osm'];
+    currentBaseLayer.addTo(map);
+
+// Add scale control to the map
+L.control.scale({ position: 'bottomleft', maxWidth: 200, metric: true, imperial: false }).addTo(map);
+
+    // Base layer control
+    var layerSelectControl = L.control({position: 'topleft'});
+    layerSelectControl.onAdd = function (map) {
+      var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      div.style.backgroundColor = 'white';
+      div.style.padding = '5px';
+      div.innerHTML = `
+        <select id="baseLayerSelect" onchange="switchBaseLayer(this.value)">
+          <option value="osm">OpenStreetMap</option>
+          <option value="norgeskart">Norgeskart</option>
+          <option value="satellite">Satellite</option>
+        </select>
+      `;
+      return div;
+    };
+    layerSelectControl.addTo(map);
+
+    // Measure control
+    var measureControl = new L.Control.Measure({
+      primaryLengthUnit: 'meters',
+      secondaryLengthUnit: 'kilometers',
+      primaryAreaUnit: 'sqmeters',
+      secondaryAreaUnit: 'hectares',
+      activeColor: '#ABE67E',
+      completedColor: '#C8F2BE'
+    });
+    measureControl.addTo(map);
+
+    // Switch base layer function
+    function switchBaseLayer(layerName) {
+      if (currentBaseLayer) map.removeLayer(currentBaseLayer);
+      currentBaseLayer = baseLayers[layerName];
+      map.addLayer(currentBaseLayer);
+    }
+
+    // Toggle Accuracy Rings
+    function toggleAccuracyRings(checked) {
+      showAccuracyRings = checked;
+      if (allPositionsShown) {
+        showAllPositions();
+      }
+    }
+    window.toggleAccuracyRings = toggleAccuracyRings;
+
+    // Toggle the timeline (message status) bar in the device list
+    function toggleTimelineBar(show) {
+      showTimelineBar = show;
+      renderDeviceColorControls();
+    }
+
+    // When pastures are imported, hide the watermark.
+    function hideWatermark() {
+      const wm = document.getElementById('watermark');
+      if (wm) wm.style.display = 'none';
+    }
+
+    // Show all positions (ignoring filter)
+    function showAllPositions() {
+      allPositionMarkers.forEach(m => map.removeLayer(m));
+      allPositionMarkers = [];
+      allAccuracyRings.forEach(r => map.removeLayer(r));
+      allAccuracyRings = [];
+      
+      Object.entries(deviceData).forEach(([device_id, positions]) => {
+        if (!deviceVisibility[device_id]) return;
+        positions.forEach(pos => {
+          const color = (pos.msg === 'warning') ? 'yellow'
+                      : (pos.msg === 'pulse')   ? 'red'
+                      : deviceColors[device_id] || '#003f8a';
+          const marker = L.circleMarker([pos.lat, pos.lon], {
+            radius: 3,
+            color: 'black',
+            weight: 0.5,
+            fillColor: color,
+            fillOpacity: 0.6
+          }).addTo(map);
+          allPositionMarkers.push(marker);
+          if (showAccuracyRings && pos.acc !== null && !isNaN(pos.acc)) {
+            const accCircle = L.circle([pos.lat, pos.lon], {
+              radius: pos.acc,
+              color: color,
+              weight: 1,
+              fillOpacity: 0.2
+            }).addTo(map);
+            allAccuracyRings.push(accCircle);
+          }
+        });
+      });
+    }
+
+    // Show filtered positions (based on eFenceStatus)
+    function showFilteredPositions() {
+      allPositionMarkers.forEach(m => map.removeLayer(m));
+      allPositionMarkers = [];
+      allAccuracyRings.forEach(r => map.removeLayer(r));
+      allAccuracyRings = [];
+      
+      let filterElement = document.getElementById('fenceStatusFilter');
+      let selectedStatuses = Array.from(filterElement.selectedOptions).map(o => o.value);
+
+      Object.entries(deviceData).forEach(([device_id, positions]) => {
+        if (!deviceVisibility[device_id]) return;
+        positions.forEach(pos => {
+          if (selectedStatuses.length > 0 && !selectedStatuses.includes(pos.eFenceStatus)) {
+            return;
+          }
+          const color = (pos.msg === 'warning') ? 'yellow'
+                      : (pos.msg === 'pulse')   ? 'red'
+                      : deviceColors[device_id] || '#003f8a';
+          const marker = L.circleMarker([pos.lat, pos.lon], {
+            radius: 3,
+            color: 'black',
+            weight: 0.5,
+            fillColor: color,
+            fillOpacity: 0.6
+          }).addTo(map);
+          allPositionMarkers.push(marker);
+          if (showAccuracyRings && pos.acc !== null && !isNaN(pos.acc)) {
+            const accCircle = L.circle([pos.lat, pos.lon], {
+              radius: pos.acc,
+              color: color,
+              weight: 1,
+              fillOpacity: 0.2
+            }).addTo(map);
+            allAccuracyRings.push(accCircle);
+          }
+        });
+      });
+    }
+
+    // Called when the filter dropdown changes
+    function updatePositionFilter() {
+      let filterElement = document.getElementById('fenceStatusFilter');
+      let selectedStatuses = Array.from(filterElement.selectedOptions).map(o => o.value);
+      if (selectedStatuses.length < allUniqueStatuses.size) {
+        document.getElementById('showAllPositionsCheckbox').checked = false;
+        allPositionsShown = false;
+        showFilteredPositions();
+      } else {
+        document.getElementById('showAllPositionsCheckbox').checked = true;
+        allPositionsShown = true;
+        showAllPositions();
+      }
+    }
+
+    // Animation update function (for animated positions)
+    function updateFrame(index) {
+      const currentTime = allTimestamps[index];
+      Object.entries(deviceData).forEach(([device_id, positions]) => {
+        if (!deviceVisibility[device_id]) return;
+        const filtered = positions.filter(p => p.timeMs <= currentTime.getTime());
+        const pos = filtered[filtered.length - 1];
+        if (!pos) return;
+        const isPulse = (pos.msg === 'pulse');
+        const color = (pos.msg === 'warning') ? 'yellow'
+                    : isPulse ? 'red'
+                    : deviceColors[device_id] || '#003f8a';
+        if (deviceMarkers[device_id]) {
+          map.removeLayer(deviceMarkers[device_id]);
+        }
+        if (isPulse) {
+          const icon = L.divIcon({
+            className: '',
+            html: '<div class="pulse-marker"></div>',
+            iconSize: [12, 12]
+          });
+          deviceMarkers[device_id] = L.marker([pos.lat, pos.lon], { icon }).addTo(map);
+        } else {
+          deviceMarkers[device_id] = L.circleMarker([pos.lat, pos.lon], {
+            radius: 4,
+            color: 'black',
+            weight: 1,
+            fillColor: color,
+            fillOpacity: 1
+          }).addTo(map);
+        }
+        if (!deviceLines[device_id]) {
+          deviceLines[device_id] = L.polyline([], { color }).addTo(map);
+        } else {
+          deviceLines[device_id].setStyle({ color });
+        }
+        const line = deviceLines[device_id];
+        let trailPoints = [];
+        if (showTrails) {
+          trailPoints = filtered.map(p => [p.lat, p.lon]);
+        } else if (showShortTrails && filtered.length >= 2) {
+          trailPoints = filtered.slice(-2).map(p => [p.lat, p.lon]);
+        }
+        if (trailPoints.length > 0) {
+          line.setLatLngs(trailPoints);
+          if (!map.hasLayer(line)) map.addLayer(line);
+        } else {
+          line.setLatLngs([]);
+          if (map.hasLayer(line)) map.removeLayer(line);
+        }
+      });
+      document.getElementById('timestamp').textContent = currentTime.toLocaleString();
+      const percent = (currentIndex / (allTimestamps.length - 1)) * 100;
+      document.getElementById('timeSlider').value = percent;
+    }
+
+    function startAnimation() {
+      if (animationInterval) return;
+      animationInterval = setInterval(() => {
+        currentIndex++;
+        if (currentIndex >= allTimestamps.length) {
+          pauseAnimation();
+          return;
+        }
+        updateFrame(currentIndex);
+      }, 1000 / animationSpeed);
+    }
+
+    function pauseAnimation() {
+      clearInterval(animationInterval);
+      animationInterval = null;
+    }
+
+    function seekTime(percent) {
+      currentIndex = Math.floor((percent / 100) * (allTimestamps.length - 1));
+      updateFrame(currentIndex);
+    }
+
+    function changeSpeed(val) {
+      animationSpeed = parseInt(val);
+      if (animationInterval) {
+        pauseAnimation();
+        startAnimation();
+      }
+    }
+
+    function rewindAnimation() {
+      currentIndex = 0;
+      updateFrame(currentIndex);
+    }
+
+    function toggleTrails(show) {
+      showTrails = show;
+      updateFrame(currentIndex);
+    }
+
+    function toggleShortTrails(show) {
+      showShortTrails = show;
+      updateFrame(currentIndex);
+    }
+
+    function toggleImportBox() {
+      document.getElementById('importArea').style.display = 'block';
+      document.getElementById('pastureImportArea').style.display = 'none';
+    }
+
+    function togglePastureImportBox() {
+      document.getElementById('pastureImportArea').style.display = 'block';
+      document.getElementById('importArea').style.display = 'none';
+    }
+
+    // CSV parser
+    function loadPositionData() {
+      const raw = document.getElementById('importArea').value;
+      const lines = raw.replace(/\[nl\]/g, '\n')
+                       .split('\n')
+                       .filter(l => l.trim() && !l.startsWith('device_id'));
+      const parsed = lines.map(line => {
+        const parts = line.split(',');
+        const device_id = parts[0];
+        const timeStr   = parts[1];
+        const lonStr    = parts[2];
+        const latStr    = parts[3];
+        const msg       = parts[4];
+        const eMode         = parts[5] || '';
+        const eCollarStatus = parts[6] || '';
+        const eFenceStatus  = parts[7] || '';
+        const acc           = (parts.length >= 9) ? parseFloat(parts[8]) / 10 : null;
+        const timeObj = new Date(timeStr);
+        return {
+          device_id,
+          timeObj,
+          timeMs: timeObj.getTime(),
+          lat: parseFloat(latStr) / 1e7,
+          lon: parseFloat(lonStr) / 1e7,
+          msg: msg.trim(),
+          eMode,
+          eCollarStatus,
+          eFenceStatus,
+          acc
+        };
+      });
+      deviceData = {};
+      deviceStats = {};
+      deviceMarkers = {};
+      deviceLines = {};
+      deviceVisibility = {};
+      parsed.forEach(pos => {
+        if (!deviceData[pos.device_id]) {
+          deviceData[pos.device_id] = [];
+        }
+        if (!deviceStats[pos.device_id]) {
+          deviceStats[pos.device_id] = { pulse: 0, warning: 0 };
+        }
+        if (pos.msg === 'pulse') {
+          deviceStats[pos.device_id].pulse++;
+        }
+        if (pos.msg === 'warning') {
+          deviceStats[pos.device_id].warning++;
+        }
+        deviceData[pos.device_id].push(pos);
+      });
+      Object.values(deviceData).forEach(arr => {
+        arr.sort((a, b) => a.timeMs - b.timeMs);
+      });
+      const allTimes = parsed.map(p => p.timeMs);
+      const uniqueSorted = [...new Set(allTimes)].sort((a, b) => a - b).map(t => new Date(t));
+      allTimestamps = uniqueSorted;
+      currentIndex = 0;
+      renderDeviceColorControls();
+      updateFrame(currentIndex);
+      populateFenceStatusFilter();
+      document.getElementById('importArea').style.display = 'none';
+    }
+
+    // Populate the eFenceStatus filter
+    function populateFenceStatusFilter() {
+      allUniqueStatuses = new Set();
+      Object.values(deviceData).forEach(arr => {
+        arr.forEach(pos => {
+          if (pos.eFenceStatus) {
+            allUniqueStatuses.add(pos.eFenceStatus);
+          }
+        });
+      });
+      let filterElement = document.getElementById('fenceStatusFilter');
+      filterElement.innerHTML = '';
+      allUniqueStatuses.forEach(s => {
+        let option = document.createElement('option');
+        option.value = s;
+        option.text = s;
+        option.selected = true;
+        filterElement.appendChild(option);
+      });
+    }
+
+    // MERGED-INTERVAL TIMELINE with 20-min blocks for "poll" data,
+    // plus thin vertical lines for "warning" (yellow) and "pulse" (red).
+    function createDeviceTimeline(dev) {
+      const positions = deviceData[dev];
+      if (!positions || positions.length === 0) return '';
+      const times = positions.map(p => p.timeMs);
+      const minTime = Math.min(...times);
+      const maxTime = Math.max(...times);
+      if (minTime === maxTime) {
+        return `
+          <div style="
+            position: relative;
+            width: 100%;
+            height: 10px;
+            background: grey;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+          " title="Single timestamp"></div>
+        `;
+      }
+      const intervalMs = 20 * 60 * 1000;
+      const totalDuration = maxTime - minTime;
+      let timelineHTML = `
+        <div style="
+          position: relative;
+          width: 100%;
+          height: 10px;
+          background: grey;
+          margin-top: 5px;
+          border: 1px solid #ccc;
+          overflow: hidden;
+        ">
+      `;
+      // Merge consecutive intervals with "poll" data.
+      let segments = [];
+      let segStart = null;
+      let segEnd = null;
+      for (let t = minTime; t <= maxTime; t += intervalMs) {
+        const windowStart = t;
+        const windowEnd = t + intervalMs;
+        const hasPoll = positions.some(
+          p => p.msg === 'poll' && p.timeMs >= windowStart && p.timeMs < windowEnd
+        );
+        if (hasPoll) {
+          if (segStart === null) {
+            segStart = windowStart;
+            segEnd = windowEnd;
+          } else {
+            segEnd = windowEnd;
+          }
+        } else {
+          if (segStart !== null) {
+            segments.push({ start: segStart, end: segEnd });
+            segStart = null;
+            segEnd = null;
+          }
+        }
+      }
+      if (segStart !== null) {
+        segments.push({ start: segStart, end: segEnd });
+      }
+      segments.forEach(s => {
+        const startFrac = (s.start - minTime) / totalDuration;
+        const endFrac = (s.end - minTime) / totalDuration;
+        const leftPercent = Math.max(0, startFrac * 100);
+        const rightPercent = Math.min(100, endFrac * 100);
+        const widthPercent = rightPercent - leftPercent;
+        if (widthPercent <= 0) return;
+        timelineHTML += `
+          <div style="
+            position: absolute;
+            left: ${leftPercent}%;
+            width: ${widthPercent}%;
+            top: 0;
+            height: 100%;
+            background: blue;
+          "></div>
+        `;
+      });
+      // Draw "warning" as thin yellow vertical lines.
+      const warnings = positions.filter(p => p.msg === 'warning');
+      warnings.forEach(w => {
+        const frac = (w.timeMs - minTime) / totalDuration;
+        if (frac < 0 || frac > 1) return;
+        const leftPercent = frac * 100;
+        timelineHTML += `
+          <div style="
+            position: absolute;
+            left: ${leftPercent}%;
+            width: 2px;
+            top: 0;
+            height: 100%;
+            background: yellow;
+          " title="Warning at ${new Date(w.timeMs).toLocaleString()}"></div>
+        `;
+      });
+      // Draw "pulse" as thin red vertical lines.
+      const pulses = positions.filter(p => p.msg === 'pulse');
+      pulses.forEach(pu => {
+        const frac = (pu.timeMs - minTime) / totalDuration;
+        if (frac < 0 || frac > 1) return;
+        const leftPercent = frac * 100;
+        timelineHTML += `
+          <div style="
+            position: absolute;
+            left: ${leftPercent}%;
+            width: 2px;
+            top: 0;
+            height: 100%;
+            background: red;
+          " title="Pulse at ${new Date(pu.timeMs).toLocaleString()}"></div>
+        `;
+      });
+      timelineHTML += '</div>';
+      return timelineHTML;
+    }
+
+    // Render devices list (with timeline) – timeline bar is shown only if showTimelineBar is true.
+    function renderDeviceColorControls() {
+      const container = document.getElementById('deviceList');
+      container.innerHTML = '<h4>Devices</h4>';
+      const devices = Object.keys(deviceData);
+      devices.forEach(dev => {
+        if (!deviceColors[dev]) {
+          deviceColors[dev] = getRandomColor();
+        }
+        deviceVisibility[dev] = true;
+        const stats = deviceStats[dev] || { warning: 0, pulse: 0 };
+        let timelineHTML = "";
+        if (showTimelineBar) {
+          timelineHTML = createDeviceTimeline(dev);
+        }
+        const div = document.createElement('div');
+        div.className = 'device-entry';
+        div.innerHTML = `
+          <label>
+            <input type="checkbox" checked onchange="toggleDeviceVisibility('${dev}', this.checked)">
+            ${dev} [Warning: ${stats.warning} | Pulse: ${stats.pulse}]
+            <input type="color" value="${deviceColors[dev]}" onchange="changeDeviceColor('${dev}', this.value)">
+          </label>
+          ${timelineHTML}
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function setAllDeviceColors() {
+      const color = document.getElementById('bulkColorPicker').value;
+      Object.keys(deviceColors).forEach(dev => { deviceColors[dev] = color; });
+      updateFrame(currentIndex);
+      renderDeviceColorControls();
+    }
+
+    // When toggling device visibility, refresh the fixed positions if "Show All Positions" is enabled.
+    function toggleDeviceVisibility(dev, visible) {
+      deviceVisibility[dev] = visible;
+      if (!visible) {
+        if (deviceMarkers[dev]) map.removeLayer(deviceMarkers[dev]);
+        if (deviceLines[dev]) map.removeLayer(deviceLines[dev]);
+        if (allPositionsShown) {
+          showAllPositions();
+        }
+      } else {
+        if (allPositionsShown) {
+          showAllPositions();
+        } else {
+          updateFrame(currentIndex);
+        }
+      }
+    }
+
+    function changeDeviceColor(dev, color) {
+      deviceColors[dev] = color;
+      updateFrame(currentIndex);
+    }
+
+    function getRandomColor() {
+      const letters = '0123456789ABCDEF';
+      let color = '#';
+      for (let i = 0; i < 6; i++) {
+        color += letters[Math.floor(Math.random() * 16)];
+      }
+      return color;
+    }
+
+    // Pasture data loading – also hide the watermark when a pasture is imported.
+    function loadPastureData() {
+      pastureLayers.forEach(layer => map.removeLayer(layer));
+      pastureLayers = [];
+      pastureInfo = [];
+      const raw = document.getElementById('pastureImportArea').value.trim();
+      const entries = raw.split('|NL|');
+      const boundsGroup = L.latLngBounds();
+      entries.forEach((entry, i) => {
+        const match = entry.match(/^(\d+)\|(\d+)\|([^|]+)\|([^|]+)\|(.+)$/);
+        if (!match) return;
+        const pasture_id = match[1], pasture_version = match[2], pasture_name = match[3];
+        const geoJsonRaw = match[5];
+        try {
+          const geoJson = eval('(' + geoJsonRaw + ')');
+          if (geoJson.type === "Polygon" && Array.isArray(geoJson.coordinates)) {
+            const latLngRings = geoJson.coordinates.map(ring =>
+              ring.map(([lon, lat]) => { 
+                const point = [lat, lon]; 
+                boundsGroup.extend(point); 
+                return point; 
+              })
+            );
+            const pastureColor = brightColors[i % brightColors.length];
+            const polygon = L.polygon(latLngRings, { color: pastureColor, weight: 2, fillOpacity: 0.2 }).addTo(map);
+            polygon.bindPopup(`<strong>${pasture_name}</strong>`);
+            pastureLayers.push(polygon);
+            pastureInfo.push({ pasture_id, pasture_name, pasture_version });
+          }
+        } catch (e) {
+          console.warn("Invalid GeoJSON in pasture entry:", e, geoJsonRaw);
+        }
+      });
+      if (boundsGroup.isValid()) {
+        map.fitBounds(boundsGroup.pad(0.1));
+      }
+      renderPastureList();
+      document.getElementById('pastureImportArea').style.display = 'none';
+      // Hide the NOFENCE watermark once pastures are imported.
+      hideWatermark();
+    }
+
+    function renderPastureList() {
+      const container = document.getElementById('pastureList');
+      container.innerHTML = '<h4>Pastures</h4>';
+      if (pastureLayers.length === 0) {
+        container.innerHTML += '<p>No pastures loaded.</p>';
+        return;
+      }
+      pastureLayers.forEach((layer, index) => {
+        const info = pastureInfo[index] || {};
+        const name = info.pasture_name || `Pasture ${index + 1}`;
+        const color = layer.options.color || '#00FF00';
+        const id = info.pasture_id || '—';
+        const ver = info.pasture_version || '—';
+        const div = document.createElement('div');
+        div.className = 'pasture-entry';
+        div.innerHTML = `
+          <label>
+            <input type="checkbox" checked onchange="togglePastureVisibility(${index}, this.checked)">
+            ${name} (ID: ${id}, Ver: ${ver})
+            <input type="color" value="${color}" onchange="changePastureColor(${index}, this.value)">
+          </label>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function togglePastureVisibility(index, visible) {
+      const layer = pastureLayers[index];
+      if (!layer) return;
+      visible ? map.addLayer(layer) : map.removeLayer(layer);
+    }
+
+    function changePastureColor(index, color) {
+      const layer = pastureLayers[index];
+      if (!layer) return;
+      layer.setStyle({ color });
+    }
+
+    // Beacon Polygon Functions
+    function drawBeaconPolygon() {
+      let beaconPoints = [];
+      Object.values(deviceData).forEach(positions => {
+        positions.forEach(pos => {
+          if (pos.eFenceStatus === 'BeaconContact' || pos.eFenceStatus === 'BeaconContactNormal') {
+            if (pos.acc !== null && !isNaN(pos.acc)) {
+              let lat = pos.lat, lon = pos.lon, r = pos.acc;
+              let latRad = lat * Math.PI / 180;
+              let dLat = r / 111320;
+              let dLon = r / (111320 * Math.cos(latRad));
+              for (let angle = 0; angle < 360; angle += 45) {
+                let rad = angle * Math.PI / 180;
+                let sampleLat = lat + dLat * Math.cos(rad);
+                let sampleLon = lon + dLon * Math.sin(rad);
+                beaconPoints.push({lat: sampleLat, lon: sampleLon});
+              }
+            } else {
+              beaconPoints.push({lat: pos.lat, lon: pos.lon});
+            }
+          }
+        });
+      });
+      if (beaconPoints.length === 0) {
+        alert("No positions with BeaconContact or BeaconContactNormal found.");
+        return;
+      }
+      let hull = convexHull(beaconPoints);
+      if (beaconPolygon) {
+        map.removeLayer(beaconPolygon);
+      }
+      beaconPolygon = L.polygon(hull.map(p => [p.lat, p.lon]), { color: 'blue', weight: 2, fillOpacity: 0.2 }).addTo(map);
+    }
+
+    function toggleBeaconPolygon() {
+      let btn = document.getElementById("toggleBeaconPolygonBtn");
+      if (beaconPolygon) {
+        map.removeLayer(beaconPolygon);
+        beaconPolygon = null;
+        btn.innerText = "Draw Beacon Polygon";
+      } else {
+        drawBeaconPolygon();
+        btn.innerText = "Remove Beacon Polygon";
+      }
+    }
+
+    function convexHull(points) {
+      points.sort((a, b) => a.lon === b.lon ? a.lat - b.lat : a.lon - b.lon);
+      const cross = (o, a, b) => (a.lon - o.lon) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lon - o.lon);
+      let lower = [];
+      for (let p of points) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
+          lower.pop();
+        }
+        lower.push(p);
+      }
+      let upper = [];
+      for (let i = points.length - 1; i >= 0; i--) {
+        let p = points[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
+          upper.pop();
+        }
+        upper.push(p);
+      }
+      upper.pop();
+      lower.pop();
+      return lower.concat(upper);
+    }
+
+    // New Clear Animation Function
+    function clearAnimation() {
+      pauseAnimation();
+      Object.keys(deviceMarkers).forEach(dev => {
+        if (deviceMarkers[dev]) {
+          map.removeLayer(deviceMarkers[dev]);
+          deviceMarkers[dev] = null;
+        }
+      });
+      Object.keys(deviceLines).forEach(dev => {
+        if (deviceLines[dev]) {
+          map.removeLayer(deviceLines[dev]);
+          deviceLines[dev] = null;
+        }
+      });
+      allPositionMarkers.forEach(m => map.removeLayer(m));
+      allPositionMarkers = [];
+      allAccuracyRings.forEach(r => map.removeLayer(r));
+      allAccuracyRings = [];
+    }
+
+    // Handler for the "Show All Positions" checkbox
+    function handleShowAllPositionsChange(checked) {
+      if (checked) {
+        allPositionsShown = true;
+        showAllPositions();
+      } else {
+        allPositionsShown = false;
+        allPositionMarkers.forEach(m => map.removeLayer(m));
+        allPositionMarkers = [];
+        allAccuracyRings.forEach(r => map.removeLayer(r));
+        allAccuracyRings = [];
+      }
+    }
+  </script>
+</body>
+</html>
+
