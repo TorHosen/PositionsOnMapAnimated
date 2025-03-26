@@ -904,6 +904,21 @@ L.control.scale({ position: 'bottomleft', maxWidth: 200, metric: true, imperial:
       }
     }
   </script>
+<script>
+  window.addEventListener('DOMContentLoaded', (event) => {
+    const params = new URLSearchParams(window.location.search);
+    const pastureData = params.get('pastureData');
+    if (pastureData) {
+      // Decode the data and set it to the pastureImportArea textarea.
+      const decodedData = decodeURIComponent(pastureData);
+      document.getElementById('pastureImportArea').value = decodedData;
+      // Optionally, if you want the textarea to be visible, you can change its display style.
+      // document.getElementById('pastureImportArea').style.display = 'block';
+      // Automatically load the pasture data into the map.
+      loadPastureData();
+    }
+  });
+</script>
 </body>
 </html>
 
