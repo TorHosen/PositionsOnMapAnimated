@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Leaflet Measure Plugin CSS (if needed) -->
+  <!-- Leaflet Measure Plugin CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet-measure/dist/leaflet-measure.css" />
   <style>
     body {
@@ -39,6 +39,7 @@
       box-shadow: -2px 0 5px rgba(0,0,0,0.1);
       overflow-y: auto;
     }
+    /* Import areas: hidden on load, original size */
     #importArea, #pastureImportArea {
       width: 100%;
       height: 150px;
@@ -52,7 +53,6 @@
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      justify-content: flex-start;
       width: 100%;
     }
     .device-entry label, .pasture-entry label {
@@ -61,6 +61,19 @@
       justify-content: space-between;
       width: 100%;
     }
+    /* DivIcon styling for custom shapes */
+    .custom-marker-icon {
+      background: none;
+      border: none;
+    }
+    .custom-icon {
+      font-size: 20px;
+      line-height: 20px;
+      text-align: center;
+      width: 24px;
+      height: 24px;
+    }
+    /* Animated pulse marker for "heart" style */
     .pulse-marker {
       width: 12px;
       height: 12px;
@@ -75,13 +88,18 @@
       50% { transform: scale(1.6); opacity: 0.5; }
       100% { transform: scale(1); opacity: 1; }
     }
+    /* Marker Style Options control */
+    #iconControls {
+      margin-top: 15px;
+      padding: 5px;
+      border: 1px solid #ccc;
+    }
+    #iconControls h4 { margin: 5px 0; }
+    #iconControls label { display: block; margin: 5px 0; }
     /* Login overlay styles */
     #loginOverlay {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       background: rgba(0, 0, 0, 0.7);
       display: flex;
       align-items: center;
@@ -126,14 +144,12 @@
   
   <!-- Main content -->
   <div id="map">
-    <!-- Watermark initially visible -->
     <div id="watermark">NOFENCE</div>
   </div>
   <div id="controls">
     <button onclick="startAnimation()">Start</button>
     <button onclick="pauseAnimation()">Pause</button>
     <button onclick="rewindAnimation()">⏮ Rewind</button>
-    <!-- Clear Animation Button -->
     <button onclick="clearAnimation()">Clear Animation</button>
     <br><br>
     <label>Speed:
@@ -144,28 +160,23 @@
     <br>
     <label><input type="checkbox" onchange="toggleShortTrails(this.checked)"> Show Short Trails</label>
     <br>
-    <!-- "Show All Positions" checkbox -->
     <label>
       <input type="checkbox" id="showAllPositionsCheckbox" onchange="handleShowAllPositionsChange(this.checked)"> 
       Show All Positions
     </label>
     <br>
-    <!-- Checkbox for accuracy rings -->
     <label><input type="checkbox" onchange="toggleAccuracyRings(this.checked)"> Show Accuracy Rings</label>
     <br>
-    <!-- New: Show Message Status Bar checkbox (timeline bar) -->
     <label>
       <input type="checkbox" id="toggleMessageStatus" onchange="toggleTimelineBar(this.checked)">
       Show Message Status Bar
     </label>
     <br><br>
-    <!-- eFenceStatus filter dropdown -->
     <label>
       Filter eFenceStatus:
       <select id="fenceStatusFilter" multiple style="width:100%; height:80px;" onchange="updatePositionFilter()"></select>
     </label>
     <br><br>
-    <!-- Toggle button for beacon polygon -->
     <button id="toggleBeaconPolygonBtn" onclick="toggleBeaconPolygon()">Draw Beacon Polygon</button>
     <br><br>
     <input type="range" id="timeSlider" min="0" max="100" value="0" style="width:100%" oninput="seekTime(this.value)" />
@@ -189,6 +200,28 @@
     </div>
     <div id="pastureList"></div>
     <hr>
+    <!-- Marker Style Options -->
+    <div id="iconControls">
+      <h4>Marker Style Options</h4>
+      <div>
+        <label>
+          Pulse Marker:
+          <select id="pulseMarkerStyle" onchange="updatePulseMarkerStyle(this.value)">
+            <option value="heart" selected>Animated Red Circle (Pulse)</option>
+            <option value="circle">Static Red Circle</option>
+          </select>
+        </label>
+      </div>
+      <div>
+        <label>
+          Warning Marker:
+          <select id="warningMarkerStyle" onchange="updateWarningMarkerStyle(this.value)">
+            <option value="yellowCircle" selected>Yellow Circle (Default)</option>
+            <option value="singleMusic">Single Music Note (Yellow)</option>
+          </select>
+        </label>
+      </div>
+    </div>
     <small style="display:block; margin-top:10px; font-size:0.85em; color:#555;">
       🐞 Report bugs to <a href="mailto:tor@nofence.no">tor@nofence.no</a>
     </small>
@@ -199,7 +232,7 @@
   <!-- Leaflet Measure Plugin JS -->
   <script src="https://unpkg.com/leaflet-measure/dist/leaflet-measure.js"></script>
   <script>
-    // Global variables
+    /* Global variables */
     let deviceData = {}, deviceMarkers = {}, deviceLines = {}, deviceColors = {};
     let deviceStats = {}, pastureLayers = [], pastureInfo = {};
     let deviceVisibility = {};
@@ -207,35 +240,46 @@
     let animationSpeed = 10;
     let currentIndex = 0, allTimestamps = [], animationInterval = null;
     let allPositionMarkers = [], allAccuracyRings = [];
-    // Flags
     let allPositionsShown = false, showAccuracyRings = false;
-    let showTimelineBar = false; // For timeline (message status) bar
+    let showTimelineBar = false;
     let beaconPolygon = null;
     let allUniqueStatuses = new Set();
 
-    const brightColors = ['#00FF00','#0099FF','#FF3333','#FF9900','#CC33FF','#FFFF00','#00FFFF','#FF00FF','#FF66CC','#66FF33'];
+    const brightColors = [
+      '#00FF00','#0099FF','#FF3333','#FF9900','#CC33FF',
+      '#FFFF00','#00FFFF','#FF00FF','#FF66CC','#66FF33'
+    ];
 
-    // Create the map (set to whole world) and add scale control
+    /* Marker style settings for pulse and warning */
+    let pulseMarkerStyle = "heart";          // "heart" => animated red circle, "circle" => static red circle
+    let warningMarkerStyle = "yellowCircle"; // "yellowCircle" or "singleMusic"
+
+    function updatePulseMarkerStyle(val) {
+      pulseMarkerStyle = val;
+      updateFrame(currentIndex);
+    }
+    function updateWarningMarkerStyle(val) {
+      warningMarkerStyle = val;
+      updateFrame(currentIndex);
+    }
+
+    /* Create the map and add scale control */
     const map = L.map('map').setView([0, 0], 2);
     L.control.scale({ position: 'bottomleft', maxWidth: 200, metric: true, imperial: false }).addTo(map);
 
-    // Base layers definition
-    var baseLayers = {
+    /* Base layers */
+    const baseLayers = {
       'osm': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors',
         maxZoom: 22
       }),
       'norgeskart': L.tileLayer(
         'https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/{z}/{y}/{x}.png',
-        {
-          attribution: '&copy; <a href="http://www.kartverket.no/">Kartverket</a>'
-        }
+        { attribution: '&copy; <a href="http://www.kartverket.no/">Kartverket</a>' }
       ),
       'norgeskart Gray': L.tileLayer(
         'https://cache.kartverket.no/v1/wmts/1.0.0/topograatone/default/webmercator/{z}/{y}/{x}.png',
-        {
-          attribution: '&copy; <a href="http://www.kartverket.no/">Kartverket</a>'
-        }
+        { attribution: '&copy; <a href="http://www.kartverket.no/">Kartverket</a>' }
       ),
       'satellite': L.tileLayer(
         'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -247,10 +291,10 @@
     let currentBaseLayer = baseLayers['osm'];
     currentBaseLayer.addTo(map);
 
-    // Base layer control with dropdown
-    var layerSelectControl = L.control({position: 'topleft'});
+    /* Base layer control with dropdown */
+    const layerSelectControl = L.control({position: 'topleft'});
     layerSelectControl.onAdd = function (map) {
-      var div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      let div = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
       div.style.backgroundColor = 'white';
       div.style.padding = '5px';
       div.innerHTML = `
@@ -271,8 +315,8 @@
       map.addLayer(currentBaseLayer);
     }
 
-    // Measure control
-    var measureControl = new L.Control.Measure({
+    /* Add measure control */
+    const measureControl = new L.Control.Measure({
       primaryLengthUnit: 'meters',
       secondaryLengthUnit: 'kilometers',
       primaryAreaUnit: 'sqmeters',
@@ -282,52 +326,98 @@
     });
     measureControl.addTo(map);
 
-    // Toggle Accuracy Rings
+    /* Toggle Accuracy Rings */
     function toggleAccuracyRings(checked) {
       showAccuracyRings = checked;
-      if (allPositionsShown) {
-        showAllPositions();
-      }
+      if (allPositionsShown) showAllPositions();
     }
     window.toggleAccuracyRings = toggleAccuracyRings;
 
-    // Toggle timeline (message status) bar in the device list
+    /* Toggle timeline bar in device list */
     function toggleTimelineBar(show) {
       showTimelineBar = show;
       renderDeviceColorControls();
     }
 
-    // Hide watermark when pastures are imported
+    /* Hide watermark when pastures are loaded */
     function hideWatermark() {
       const wm = document.getElementById('watermark');
       if (wm) wm.style.display = 'none';
     }
 
-    // Show all positions (ignoring filter)
+    /* Helper to create marker for each position, depending on msg type */
+    function createMarker(pos, device_id) {
+      const msgType = pos.msg.trim();
+      let marker;
+      if (msgType === 'pulse') {
+        if (pulseMarkerStyle === 'heart') {
+          const icon = L.divIcon({
+            html: '<div class="pulse-marker"></div>',
+            className: 'custom-marker-icon'
+          });
+          marker = L.marker([pos.lat, pos.lon], { icon });
+        } else {
+          marker = L.circleMarker([pos.lat, pos.lon], {
+            radius: 4,
+            color: 'black',
+            weight: 1,
+            fillColor: 'red',
+            fillOpacity: 1
+          });
+        }
+      } else if (msgType === 'warning') {
+        if (warningMarkerStyle === 'yellowCircle') {
+          marker = L.circleMarker([pos.lat, pos.lon], {
+            radius: 4,
+            color: 'black',
+            weight: 1,
+            fillColor: 'yellow',
+            fillOpacity: 1
+          });
+        } else if (warningMarkerStyle === 'singleMusic') {
+          // Single music note in yellow with black outline via text-shadow
+          const iconHtml = `<div class="custom-icon" style="color: yellow; text-shadow: -1px -1px 0 black, 1px -1px 0 black, -1px 1px 0 black, 1px 1px 0 black;">♫</div>`;
+          const icon = L.divIcon({
+            html: iconHtml,
+            className: 'custom-marker-icon',
+            iconSize: [20, 20]
+          });
+          marker = L.marker([pos.lat, pos.lon], { icon });
+        }
+      } else {
+        marker = L.circleMarker([pos.lat, pos.lon], {
+          radius: 4,
+          color: 'black',
+          weight: 1,
+          fillColor: deviceColors[device_id] || '#003f8a',
+          fillOpacity: 1
+        });
+      }
+      return marker;
+    }
+
+    /* Show all positions (ignoring filter) */
     function showAllPositions() {
       allPositionMarkers.forEach(m => map.removeLayer(m));
       allPositionMarkers = [];
       allAccuracyRings.forEach(r => map.removeLayer(r));
       allAccuracyRings = [];
-      
       Object.entries(deviceData).forEach(([device_id, positions]) => {
         if (!deviceVisibility[device_id]) return;
         positions.forEach(pos => {
-          const color = (pos.msg === 'warning') ? 'yellow'
-                      : (pos.msg === 'pulse')   ? 'red'
-                      : deviceColors[device_id] || '#003f8a';
-          const marker = L.circleMarker([pos.lat, pos.lon], {
-            radius: 3,
-            color: 'black',
-            weight: 0.5,
-            fillColor: color,
-            fillOpacity: 0.6
-          }).addTo(map);
+          const marker = createMarker(pos, device_id).addTo(map);
+          marker.markerType = (pos.msg.trim() === 'warning' || pos.msg.trim() === 'pulse') 
+                               ? pos.msg.trim() 
+                               : 'normal';
           allPositionMarkers.push(marker);
+          const msgType = pos.msg.trim();
+          let ringColor = deviceColors[device_id] || '#003f8a';
+          if (msgType === 'warning') ringColor = 'yellow';
+          else if (msgType === 'pulse') ringColor = 'red';
           if (showAccuracyRings && pos.acc !== null && !isNaN(pos.acc)) {
             const accCircle = L.circle([pos.lat, pos.lon], {
               radius: pos.acc,
-              color: color,
+              color: ringColor,
               weight: 1,
               fillOpacity: 0.2
             }).addTo(map);
@@ -337,37 +427,31 @@
       });
     }
 
-    // Show filtered positions (based on eFenceStatus)
+    /* Show filtered positions (based on eFenceStatus) */
     function showFilteredPositions() {
       allPositionMarkers.forEach(m => map.removeLayer(m));
       allPositionMarkers = [];
       allAccuracyRings.forEach(r => map.removeLayer(r));
       allAccuracyRings = [];
-      
       let filterElement = document.getElementById('fenceStatusFilter');
       let selectedStatuses = Array.from(filterElement.selectedOptions).map(o => o.value);
-
       Object.entries(deviceData).forEach(([device_id, positions]) => {
         if (!deviceVisibility[device_id]) return;
         positions.forEach(pos => {
-          if (selectedStatuses.length > 0 && !selectedStatuses.includes(pos.eFenceStatus)) {
-            return;
-          }
-          const color = (pos.msg === 'warning') ? 'yellow'
-                      : (pos.msg === 'pulse')   ? 'red'
-                      : deviceColors[device_id] || '#003f8a';
-          const marker = L.circleMarker([pos.lat, pos.lon], {
-            radius: 3,
-            color: 'black',
-            weight: 0.5,
-            fillColor: color,
-            fillOpacity: 0.6
-          }).addTo(map);
+          if (selectedStatuses.length > 0 && !selectedStatuses.includes(pos.eFenceStatus)) return;
+          const marker = createMarker(pos, device_id).addTo(map);
+          marker.markerType = (pos.msg.trim() === 'warning' || pos.msg.trim() === 'pulse') 
+                               ? pos.msg.trim() 
+                               : 'normal';
           allPositionMarkers.push(marker);
+          const msgType = pos.msg.trim();
+          let ringColor = deviceColors[device_id] || '#003f8a';
+          if (msgType === 'warning') ringColor = 'yellow';
+          else if (msgType === 'pulse') ringColor = 'red';
           if (showAccuracyRings && pos.acc !== null && !isNaN(pos.acc)) {
             const accCircle = L.circle([pos.lat, pos.lon], {
               radius: pos.acc,
-              color: color,
+              color: ringColor,
               weight: 1,
               fillOpacity: 0.2
             }).addTo(map);
@@ -377,22 +461,7 @@
       });
     }
 
-    // Called when the filter dropdown changes
-    function updatePositionFilter() {
-      let filterElement = document.getElementById('fenceStatusFilter');
-      let selectedStatuses = Array.from(filterElement.selectedOptions).map(o => o.value);
-      if (selectedStatuses.length < allUniqueStatuses.size) {
-        document.getElementById('showAllPositionsCheckbox').checked = false;
-        allPositionsShown = false;
-        showFilteredPositions();
-      } else {
-        document.getElementById('showAllPositionsCheckbox').checked = true;
-        allPositionsShown = true;
-        showAllPositions();
-      }
-    }
-
-    // Animation update function (for animated positions)
+    /* Animation update function with marker type check */
     function updateFrame(index) {
       const currentTime = allTimestamps[index];
       Object.entries(deviceData).forEach(([device_id, positions]) => {
@@ -400,33 +469,42 @@
         const filtered = positions.filter(p => p.timeMs <= currentTime.getTime());
         const pos = filtered[filtered.length - 1];
         if (!pos) return;
-        const isPulse = (pos.msg === 'pulse');
-        const color = (pos.msg === 'warning') ? 'yellow'
-                    : isPulse ? 'red'
-                    : deviceColors[device_id] || '#003f8a';
-        if (deviceMarkers[device_id]) {
-          map.removeLayer(deviceMarkers[device_id]);
-        }
-        if (isPulse) {
-          const icon = L.divIcon({
-            className: '',
-            html: '<div class="pulse-marker"></div>',
-            iconSize: [12, 12]
-          });
-          deviceMarkers[device_id] = L.marker([pos.lat, pos.lon], { icon }).addTo(map);
+        const currentMsg = pos.msg.trim();
+        let existingMarker = deviceMarkers[device_id];
+
+        // For warning or pulse messages, always recreate the marker.
+        // For normal messages, if an existing marker is not 'normal', recreate it.
+        if (currentMsg === 'warning' || currentMsg === 'pulse') {
+          if (existingMarker) {
+            map.removeLayer(existingMarker);
+          }
+          let newMarker = createMarker(pos, device_id);
+          newMarker.markerType = currentMsg;
+          deviceMarkers[device_id] = newMarker.addTo(map);
         } else {
-          deviceMarkers[device_id] = L.circleMarker([pos.lat, pos.lon], {
-            radius: 4,
-            color: 'black',
-            weight: 1,
-            fillColor: color,
-            fillOpacity: 1
-          }).addTo(map);
+          // "normal" position
+          if (existingMarker && existingMarker.markerType !== 'normal') {
+            map.removeLayer(existingMarker);
+            let newMarker = createMarker(pos, device_id);
+            newMarker.markerType = 'normal';
+            deviceMarkers[device_id] = newMarker.addTo(map);
+          } else if (existingMarker) {
+            existingMarker.setLatLng([pos.lat, pos.lon]);
+          } else {
+            let newMarker = createMarker(pos, device_id);
+            newMarker.markerType = 'normal';
+            deviceMarkers[device_id] = newMarker.addTo(map);
+          }
         }
-        if (!deviceLines[device_id]) {
-          deviceLines[device_id] = L.polyline([], { color }).addTo(map);
+
+        // Update the device trail (polyline)
+        let lineColor = deviceColors[device_id] || '#003f8a';
+        if (currentMsg === 'warning') lineColor = 'yellow';
+        else if (currentMsg === 'pulse') lineColor = 'red';
+        if (deviceLines[device_id]) {
+          deviceLines[device_id].setStyle({ color: lineColor });
         } else {
-          deviceLines[device_id].setStyle({ color });
+          deviceLines[device_id] = L.polyline([], { color: lineColor }).addTo(map);
         }
         const line = deviceLines[device_id];
         let trailPoints = [];
@@ -448,6 +526,7 @@
       document.getElementById('timeSlider').value = percent;
     }
 
+    /* Animation control functions using setInterval for simplicity */
     function startAnimation() {
       if (animationInterval) return;
       animationInterval = setInterval(() => {
@@ -503,7 +582,7 @@
       document.getElementById('importArea').style.display = 'none';
     }
 
-    // CSV parser
+    /* CSV parser for position data */
     function loadPositionData() {
       const raw = document.getElementById('importArea').value;
       const lines = raw.replace(/\[nl\]/g, '\n')
@@ -540,23 +619,13 @@
       deviceLines = {};
       deviceVisibility = {};
       parsed.forEach(pos => {
-        if (!deviceData[pos.device_id]) {
-          deviceData[pos.device_id] = [];
-        }
-        if (!deviceStats[pos.device_id]) {
-          deviceStats[pos.device_id] = { pulse: 0, warning: 0 };
-        }
-        if (pos.msg === 'pulse') {
-          deviceStats[pos.device_id].pulse++;
-        }
-        if (pos.msg === 'warning') {
-          deviceStats[pos.device_id].warning++;
-        }
+        if (!deviceData[pos.device_id]) deviceData[pos.device_id] = [];
+        if (!deviceStats[pos.device_id]) deviceStats[pos.device_id] = { pulse: 0, warning: 0 };
+        if (pos.msg === 'pulse') deviceStats[pos.device_id].pulse++;
+        if (pos.msg === 'warning') deviceStats[pos.device_id].warning++;
         deviceData[pos.device_id].push(pos);
       });
-      Object.values(deviceData).forEach(arr => {
-        arr.sort((a, b) => a.timeMs - b.timeMs);
-      });
+      Object.values(deviceData).forEach(arr => arr.sort((a, b) => a.timeMs - b.timeMs));
       const allTimes = parsed.map(p => p.timeMs);
       const uniqueSorted = [...new Set(allTimes)].sort((a, b) => a - b).map(t => new Date(t));
       allTimestamps = uniqueSorted;
@@ -567,14 +636,12 @@
       document.getElementById('importArea').style.display = 'none';
     }
 
-    // Populate the eFenceStatus filter
+    /* Populate the eFenceStatus filter */
     function populateFenceStatusFilter() {
       allUniqueStatuses = new Set();
       Object.values(deviceData).forEach(arr => {
         arr.forEach(pos => {
-          if (pos.eFenceStatus) {
-            allUniqueStatuses.add(pos.eFenceStatus);
-          }
+          if (pos.eFenceStatus) allUniqueStatuses.add(pos.eFenceStatus);
         });
       });
       let filterElement = document.getElementById('fenceStatusFilter');
@@ -588,8 +655,15 @@
       });
     }
 
-    // MERGED-INTERVAL TIMELINE with 20-min blocks for "poll" data,
-    // plus thin vertical lines for "warning" (yellow) and "pulse" (red).
+    function updatePositionFilter() {
+      if (allPositionsShown) {
+        showFilteredPositions();
+      } else {
+        updateFrame(currentIndex);
+      }
+    }
+
+    /* Create timeline for each device */
     function createDeviceTimeline(dev) {
       const positions = deviceData[dev];
       if (!positions || positions.length === 0) return '';
@@ -621,19 +695,15 @@
           overflow: hidden;
         ">
       `;
-      // Merge consecutive intervals with "poll" data.
       let segments = [];
-      let segStart = null;
-      let segEnd = null;
+      let segStart = null, segEnd = null;
       for (let t = minTime; t <= maxTime; t += intervalMs) {
         const windowStart = t;
         const windowEnd = t + intervalMs;
-        const hasPoll = positions.some(
-          p => p.msg === 'poll' && p.timeMs >= windowStart && p.timeMs < windowEnd
-        );
+        const hasPoll = positions.some(p => p.msg === 'poll' && p.timeMs >= windowStart && p.timeMs < windowEnd);
         if (hasPoll) {
           if (segStart === null) {
-            segStart = windowStart;
+            segStart = windowStart; 
             segEnd = windowEnd;
           } else {
             segEnd = windowEnd;
@@ -646,9 +716,7 @@
           }
         }
       }
-      if (segStart !== null) {
-        segments.push({ start: segStart, end: segEnd });
-      }
+      if (segStart !== null) segments.push({ start: segStart, end: segEnd });
       segments.forEach(s => {
         const startFrac = (s.start - minTime) / totalDuration;
         const endFrac = (s.end - minTime) / totalDuration;
@@ -667,7 +735,6 @@
           "></div>
         `;
       });
-      // Draw "warning" as thin yellow vertical lines.
       const warnings = positions.filter(p => p.msg === 'warning');
       warnings.forEach(w => {
         const frac = (w.timeMs - minTime) / totalDuration;
@@ -684,7 +751,6 @@
           " title="Warning at ${new Date(w.timeMs).toLocaleString()}"></div>
         `;
       });
-      // Draw "pulse" as thin red vertical lines.
       const pulses = positions.filter(p => p.msg === 'pulse');
       pulses.forEach(pu => {
         const frac = (pu.timeMs - minTime) / totalDuration;
@@ -705,21 +771,17 @@
       return timelineHTML;
     }
 
-    // Render devices list (with timeline) – timeline bar is shown only if showTimelineBar is true.
+    /* Render device list (with timeline if enabled) */
     function renderDeviceColorControls() {
       const container = document.getElementById('deviceList');
       container.innerHTML = '<h4>Devices</h4>';
       const devices = Object.keys(deviceData);
       devices.forEach(dev => {
-        if (!deviceColors[dev]) {
-          deviceColors[dev] = getRandomColor();
-        }
+        if (!deviceColors[dev]) deviceColors[dev] = getRandomColor();
         deviceVisibility[dev] = true;
         const stats = deviceStats[dev] || { warning: 0, pulse: 0 };
         let timelineHTML = "";
-        if (showTimelineBar) {
-          timelineHTML = createDeviceTimeline(dev);
-        }
+        if (showTimelineBar) timelineHTML = createDeviceTimeline(dev);
         const div = document.createElement('div');
         div.className = 'device-entry';
         div.innerHTML = `
@@ -741,21 +803,15 @@
       renderDeviceColorControls();
     }
 
-    // When toggling device visibility, refresh the fixed positions if "Show All Positions" is enabled.
     function toggleDeviceVisibility(dev, visible) {
       deviceVisibility[dev] = visible;
       if (!visible) {
         if (deviceMarkers[dev]) map.removeLayer(deviceMarkers[dev]);
         if (deviceLines[dev]) map.removeLayer(deviceLines[dev]);
-        if (allPositionsShown) {
-          showAllPositions();
-        }
+        if (allPositionsShown) showAllPositions();
       } else {
-        if (allPositionsShown) {
-          showAllPositions();
-        } else {
-          updateFrame(currentIndex);
-        }
+        if (allPositionsShown) showAllPositions();
+        else updateFrame(currentIndex);
       }
     }
 
@@ -773,7 +829,7 @@
       return color;
     }
 
-    // Pasture data loading – also hide the watermark when a pasture is imported.
+    /* Pasture data loading */
     function loadPastureData() {
       pastureLayers.forEach(layer => map.removeLayer(layer));
       pastureLayers = [];
@@ -806,12 +862,9 @@
           console.warn("Invalid GeoJSON in pasture entry:", e, geoJsonRaw);
         }
       });
-      if (boundsGroup.isValid()) {
-        map.fitBounds(boundsGroup.pad(0.1));
-      }
+      if (boundsGroup.isValid()) map.fitBounds(boundsGroup.pad(0.1));
       renderPastureList();
       document.getElementById('pastureImportArea').style.display = 'none';
-      // Hide the NOFENCE watermark once pastures are imported.
       hideWatermark();
     }
 
@@ -853,7 +906,7 @@
       layer.setStyle({ color });
     }
 
-    // Beacon Polygon Functions
+    /* Beacon Polygon Functions */
     function drawBeaconPolygon() {
       let beaconPoints = [];
       Object.values(deviceData).forEach(positions => {
@@ -881,9 +934,7 @@
         return;
       }
       let hull = convexHull(beaconPoints);
-      if (beaconPolygon) {
-        map.removeLayer(beaconPolygon);
-      }
+      if (beaconPolygon) map.removeLayer(beaconPolygon);
       beaconPolygon = L.polygon(hull.map(p => [p.lat, p.lon]), { color: 'blue', weight: 2, fillOpacity: 0.2 }).addTo(map);
     }
 
@@ -904,17 +955,13 @@
       const cross = (o, a, b) => (a.lon - o.lon) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lon - o.lon);
       let lower = [];
       for (let p of points) {
-        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-          lower.pop();
-        }
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
         lower.push(p);
       }
       let upper = [];
       for (let i = points.length - 1; i >= 0; i--) {
         let p = points[i];
-        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-          upper.pop();
-        }
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
         upper.push(p);
       }
       upper.pop();
@@ -922,7 +969,7 @@
       return lower.concat(upper);
     }
 
-    // New Clear Animation Function
+    /* Clear Animation Function */
     function clearAnimation() {
       pauseAnimation();
       Object.keys(deviceMarkers).forEach(dev => {
@@ -943,7 +990,7 @@
       allAccuracyRings = [];
     }
 
-    // Handler for the "Show All Positions" checkbox
+    /* Handler for "Show All Positions" checkbox */
     function handleShowAllPositionsChange(checked) {
       if (checked) {
         allPositionsShown = true;
@@ -958,36 +1005,29 @@
     }
   </script>
   <script>
+    /* If there's any "pastureData" in the URL, auto-load it */
     window.addEventListener('DOMContentLoaded', (event) => {
       const params = new URLSearchParams(window.location.search);
       const pastureData = params.get('pastureData');
       if (pastureData) {
-        // Decode the data and set it to the pastureImportArea textarea.
         const decodedData = decodeURIComponent(pastureData);
         document.getElementById('pastureImportArea').value = decodedData;
-        // Automatically load the pasture data into the map.
         loadPastureData();
       }
     });
   </script>
   <!-- Login Script -->
   <script>
-    // Set your fixed username, password, and a version string.
     const FIXED_USERNAME = 'ImNotAnAdmin';
     const FIXED_PASSWORD = '44FourOr22';
-    // Update this version if you change the fixed credentials.
     const LOGIN_VERSION = 'v1';
 
     document.addEventListener('DOMContentLoaded', function() {
       const loginOverlay = document.getElementById('loginOverlay');
-      
-      // Only hide the login if the stored version matches.
       if (localStorage.getItem('loggedIn') === 'true' &&
           localStorage.getItem('loginVersion') === LOGIN_VERSION) {
         loginOverlay.style.display = 'none';
       }
-      
-      // Handle login form submission
       document.getElementById('loginForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const username = document.getElementById('username').value;
@@ -997,7 +1037,6 @@
           localStorage.setItem('loginVersion', LOGIN_VERSION);
           loginOverlay.style.display = 'none';
         } else {
-          // Clear any stored login info if incorrect
           localStorage.removeItem('loggedIn');
           localStorage.removeItem('loginVersion');
           alert('Invalid credentials. Please try again.');
