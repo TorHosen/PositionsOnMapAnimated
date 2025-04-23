@@ -165,6 +165,44 @@
       Show All Positions
     </label>
     <br>
+
+    <label>
+  <input type="checkbox"
+         id="colorGpsModeCheckbox"
+         onchange="toggleGpsModeColoring(this.checked)">
+  Color by GPS&nbsp;Mode&nbsp;
+  <!-- inline legend -->
+  <span style="display:inline-block;width:11px;height:11px;background:#00a000;border:1px solid #000;margin-left:4px"></span> PSM&nbsp;
+  <span style="display:inline-block;width:11px;height:11px;background:#ffa500;border:1px solid #000;margin-left:6px"></span> CAUTION&nbsp;
+  <span style="display:inline-block;width:11px;height:11px;background:#ff0000;border:1px solid #000;margin-left:6px"></span> MAX
+</label>
+
+<label>
+  <input type="checkbox"
+         id="colorUratCheckbox"
+         onchange="toggleUratColoring(this.checked)">
+  Color&nbsp;by&nbsp;URAT&nbsp;
+  <span style="display:inline-block;width:11px;height:11px;background:#ff0000;border:1px solid #000;margin-left:4px"></span> 2G&nbsp;
+  <span style="display:inline-block;width:11px;height:11px;background:#00a000;border:1px solid #000;margin-left:6px"></span> LTE
+</label>
+<br>
+<label>
+  <input type="checkbox"
+         id="showSatCheckbox"
+         onchange="toggleSatMarkers(this.checked)">
+  Show # Satellites
+</label>
+<br>
+<label>
+  <input type="checkbox"
+         id="colorOpCheckbox"
+         onchange="toggleOpColoring(this.checked)">
+  Color by Operator
+</label>
+<br>
+<!-- legend goes here when the box is ticked -->
+<div id="operatorLegend" style="margin:4px 0"></div>
+
     <label><input type="checkbox" onchange="toggleAccuracyRings(this.checked)"> Show Accuracy Rings</label>
     <br>
     <label>
@@ -215,10 +253,11 @@
       <div>
         <label>
           Warning Marker:
-          <select id="warningMarkerStyle" onchange="updateWarningMarkerStyle(this.value)">
-            <option value="yellowCircle" selected>Yellow Circle (Default)</option>
-            <option value="singleMusic">Single Music Note (Yellow)</option>
-          </select>
+        <select id="warningMarkerStyle" onchange="updateWarningMarkerStyle(this.value)">
+ 	 <option value="yellowCircle">Yellow Circle </option>
+  	 <option value="singleMusic" selected>Single Music Note (Default)</option>
+	</select>
+
         </label>
       </div>
     </div>
@@ -244,15 +283,42 @@
     let showTimelineBar = false;
     let beaconPolygon = null;
     let allUniqueStatuses = new Set();
+    let colorByGpsMode = false;
+    let colorByUrat = false; 
+    let showSatMarkers = false;   // master switch
+    let colorByOp = false; 
 
-    const brightColors = [
-      '#00FF00','#0099FF','#FF3333','#FF9900','#CC33FF',
-      '#FFFF00','#00FFFF','#FF00FF','#FF66CC','#66FF33'
-    ];
+const opColors = {};
+const satMin = 1;             // expected range
+const satMax = 40;
+
+const uratColors = {           // palette
+  0: '#ff0000',   // 2 G  (GSM)   → red
+  3: '#ff0000',   // 2 G  (EDGE)  → red
+  7: '##00a000'    // LTE          → green
+  // add more codes if needed
+};
+
+const gpsModeColors = {
+  0: '#000000',   // black  (mode 0)
+  1: '#000000',   // black  (mode 1)
+  2: '#00a000',   // green
+  3: '#ffa500',   // orange
+  4: '#ff0000',   // red
+  5: '#000000',   // black
+  // anything not listed will keep the per-device colour
+};
+
+const brightColors = [        // pasture colours (unchanged)
+  '#BF00FF','#0099FF','#FF3333','#FF9900','#CC33FF',
+  '#FFFF00','#00FFFF','#FF00FF','#FF66CC','#66FF33'
+];
+
+
 
     /* Marker style settings for pulse and warning */
     let pulseMarkerStyle = "heart";          // "heart" => animated red circle, "circle" => static red circle
-    let warningMarkerStyle = "yellowCircle"; // "yellowCircle" or "singleMusic"
+    let warningMarkerStyle = "singleMusic"; // "yellowCircle" or "singleMusic"
 
     function updatePulseMarkerStyle(val) {
       pulseMarkerStyle = val;
@@ -333,6 +399,80 @@
     }
     window.toggleAccuracyRings = toggleAccuracyRings;
 
+function toggleGpsModeColoring(checked) {
+  colorByGpsMode = checked;
+  // Re-draw whatever is currently on screen
+  if (allPositionsShown) {
+    showAllPositions();
+  } else {
+    updateFrame(currentIndex);
+  }
+}
+
+function toggleSatMarkers(checked) {
+  showSatMarkers = checked;
+  if (allPositionsShown) {
+    showAllPositions();
+  } else {
+    updateFrame(currentIndex);
+  }
+}
+
+function updateOperatorLegend() {
+  const div = document.getElementById('operatorLegend');
+  div.innerHTML = '';
+  if (!colorByOp) return;                // hide legend when box is off
+
+  Object.keys(opColors).sort().forEach(op => {
+    const c = opColors[op];
+    div.innerHTML +=
+      `<span style="display:inline-block;width:12px;height:12px;
+                    background:${c};border:1px solid #000;margin-right:4px"></span>${op}&nbsp;`;
+  });
+}
+
+function toggleOpColoring(checked) {
+  colorByOp = checked;
+  updateOperatorLegend();
+  allPositionsShown ? showAllPositions() : updateFrame(currentIndex);
+}
+
+
+function shouldDisplayPos(pos) {
+  if (!(colorByUrat || colorByOp)) return true;   // ← changed
+  const t = pos.msg;
+  return t === 'poll' || t === 'pulse' || t === 'warning';
+}
+
+function toggleUratColoring(checked) {
+  colorByUrat = checked;
+  if (allPositionsShown) {
+    showAllPositions();
+  } else {
+    updateFrame(currentIndex);
+  }
+}
+function getColorForOp(op) {
+  if (!opColors[op]) {
+    // generate and latch a random hex colour
+    opColors[op] = '#' + Math.floor(Math.random() * 0xffffff)
+                         .toString(16).padStart(6, '0');
+  }
+  return opColors[op];
+}
+
+
+function satDiameter(n) {
+  const minD = 12;   // smallest circle – adjust if you like
+  const maxD = 32;   // largest circle
+  const satMin = 1;  // expected NumSV range
+  const satMax = 40;
+
+  // clamp n to 1-40, then scale linearly to 12-32 px
+  return minD + ((Math.min(Math.max(n, satMin), satMax) - satMin) *
+                 (maxD - minD) / (satMax - satMin));
+}
+
     /* Toggle timeline bar in device list */
     function toggleTimelineBar(show) {
       showTimelineBar = show;
@@ -384,15 +524,44 @@
           });
           marker = L.marker([pos.lat, pos.lon], { icon });
         }
-      } else {
-        marker = L.circleMarker([pos.lat, pos.lon], {
-          radius: 4,
-          color: 'black',
-          weight: 1,
-          fillColor: deviceColors[device_id] || '#003f8a',
-          fillOpacity: 1
-        });
-      }
+      }else {  // normal message
+  /* choose colour: URAT palette beats GPS palette beats per-device */
+ const fill =  colorByOp   && pos.operator              ? getColorForOp(pos.operator)
+           :  colorByUrat && uratColors[pos.urat]      ? uratColors[pos.urat]
+           :  colorByGpsMode && gpsModeColors[pos.gpsMode] ? gpsModeColors[pos.gpsMode]
+           :  (deviceColors[device_id] || '#003f8a');
+
+
+  if (showSatMarkers && pos.numSV != null) {
+    /* DivIcon so we can print the number inside the circle */
+    const d = satDiameter(pos.numSV);
+    const iconHtml = `
+      <div style="
+        width:${d}px;height:${d}px;
+        line-height:${d}px;
+        background:${fill};
+        border:1px solid black;
+        border-radius:50%;
+        text-align:center;
+        font-size:${Math.max(10, d*0.4)}px;
+        color:#fff;
+        font-weight:bold;
+      ">${pos.numSV}</div>`;
+    const icon = L.divIcon({ html: iconHtml, className:'custom-marker-icon' });
+    marker = L.marker([pos.lat, pos.lon], { icon });
+  } else {
+    /* plain coloured circle */
+    marker = L.circleMarker([pos.lat, pos.lon], {
+      radius: 4,
+      color: 'black',
+      weight: 1,
+      fillColor: fill,
+      fillOpacity: 1
+    });
+  }
+}
+
+
       return marker;
     }
 
@@ -405,6 +574,7 @@
       Object.entries(deviceData).forEach(([device_id, positions]) => {
         if (!deviceVisibility[device_id]) return;
         positions.forEach(pos => {
+        if (!shouldDisplayPos(pos)) return;
           const marker = createMarker(pos, device_id).addTo(map);
           marker.markerType = (pos.msg.trim() === 'warning' || pos.msg.trim() === 'pulse') 
                                ? pos.msg.trim() 
@@ -438,6 +608,7 @@
       Object.entries(deviceData).forEach(([device_id, positions]) => {
         if (!deviceVisibility[device_id]) return;
         positions.forEach(pos => {
+        if (!shouldDisplayPos(pos)) return;
           if (selectedStatuses.length > 0 && !selectedStatuses.includes(pos.eFenceStatus)) return;
           const marker = createMarker(pos, device_id).addTo(map);
           marker.markerType = (pos.msg.trim() === 'warning' || pos.msg.trim() === 'pulse') 
@@ -466,8 +637,10 @@
       const currentTime = allTimestamps[index];
       Object.entries(deviceData).forEach(([device_id, positions]) => {
         if (!deviceVisibility[device_id]) return;
-        const filtered = positions.filter(p => p.timeMs <= currentTime.getTime());
-        const pos = filtered[filtered.length - 1];
+        const filtered = positions
+                   .filter(p => p.timeMs <= currentTime.getTime())
+                   .filter(shouldDisplayPos);   // apply URAT rule
+const pos = filtered[filtered.length - 1];
         if (!pos) return;
         const currentMsg = pos.msg.trim();
         let existingMarker = deviceMarkers[device_id];
@@ -599,6 +772,20 @@
         const eCollarStatus = parts[6] || '';
         const eFenceStatus  = parts[7] || '';
         const acc           = (parts.length >= 9) ? parseFloat(parts[8]) / 10 : null;
+        const gpsMode = (parts.length >= 12 && parts[11] !== '')  // column index 11
+                  ? parseInt(parts[11], 10)
+                  : null;
+        const urat = (parts.length >= 14 && parts[13] !== '')
+               ? parseInt(parts[13], 10)
+               : null;
+        const numSV = (parts.length >= 10 && parts[9] !== '')
+                ? parseInt(parts[9], 10)
+                : null;
+const operator = (parts.length >= 13 && parts[12] !== '')
+                   ? parts[12]    // e.g. 24201
+                   : null;
+
+
         const timeObj = new Date(timeStr);
         return {
           device_id,
@@ -610,7 +797,11 @@
           eMode,
           eCollarStatus,
           eFenceStatus,
-          acc
+          acc,
+          gpsMode,
+          urat,
+          numSV,
+          operator
         };
       });
       deviceData = {};
@@ -623,6 +814,7 @@
         if (!deviceStats[pos.device_id]) deviceStats[pos.device_id] = { pulse: 0, warning: 0 };
         if (pos.msg === 'pulse') deviceStats[pos.device_id].pulse++;
         if (pos.msg === 'warning') deviceStats[pos.device_id].warning++;
+        if (pos.operator) getColorForOp(pos.operator);
         deviceData[pos.device_id].push(pos);
       });
       Object.values(deviceData).forEach(arr => arr.sort((a, b) => a.timeMs - b.timeMs));
