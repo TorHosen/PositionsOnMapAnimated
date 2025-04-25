@@ -48,6 +48,9 @@
     #deviceList, #pastureList {
       margin-top: 20px;
     }
+#seqMsgControls {
+  display: none;
+}
     .device-entry, .pasture-entry {
       margin: 10px 0;
       display: flex;
@@ -117,6 +120,22 @@
       padding: 5px;
       width: 200px;
     }
+#controls label {
+  margin: 0;
+  padding: 0;
+  line-height: 1.2;
+}
+/* Indent dependent checkboxes */
+#gpsModeFilter,
+#uratFilter,
+#colorOpCheckbox:checked ~ #operatorLegend,
+#colorOpCheckbox:parent,
+#showSatCheckbox:parent {
+  margin-left: 1.2em; /* or 2ch/3ch if you prefer character spacing */
+}
+.dependent {
+  margin-left: 1.5em;
+}
   </style>
 </head>
 <body>
@@ -166,42 +185,59 @@
     </label>
     <br>
 
-    <label>
-  <input type="checkbox"
-         id="colorGpsModeCheckbox"
-         onchange="toggleGpsModeColoring(this.checked)">
-  Color by GPS&nbsp;Mode&nbsp;
-  <!-- inline legend -->
-  <span style="display:inline-block;width:11px;height:11px;background:#00a000;border:1px solid #000;margin-left:4px"></span> PSM&nbsp;
-  <span style="display:inline-block;width:11px;height:11px;background:#ffa500;border:1px solid #000;margin-left:6px"></span> CAUTION&nbsp;
-  <span style="display:inline-block;width:11px;height:11px;background:#ff0000;border:1px solid #000;margin-left:6px"></span> MAX
-</label>
+<div id="gpsModeFilter" class="dependent">
+  <label>
+    <input type="checkbox" id="colorGpsModeCheckbox" onchange="toggleGpsModeColoring(this.checked)">
+    Color by GPS Mode(x2.5)
+  </label>
+  <div id="gpsModeLegend" style="margin-left: 20px; display: none;">
+    <span style="display:inline-block;width:11px;height:11px;background:#00a000;border:1px solid #000;"></span> PSM&nbsp;
+    <span style="display:inline-block;width:11px;height:11px;background:#ffa500;border:1px solid #000;"></span> CAUTION&nbsp;
+    <span style="display:inline-block;width:11px;height:11px;background:#ff0000;border:1px solid #000;"></span> MAX
+  </div>
+</div>
 
-<label>
-  <input type="checkbox"
-         id="colorUratCheckbox"
-         onchange="toggleUratColoring(this.checked)">
-  Color&nbsp;by&nbsp;URAT&nbsp;
-  <span style="display:inline-block;width:11px;height:11px;background:#ff0000;border:1px solid #000;margin-left:4px"></span> 2G&nbsp;
-  <span style="display:inline-block;width:11px;height:11px;background:#00a000;border:1px solid #000;margin-left:6px"></span> LTE
-</label>
-<br>
-<label>
-  <input type="checkbox"
-         id="showSatCheckbox"
-         onchange="toggleSatMarkers(this.checked)">
-  Show # Satellites
-</label>
-<br>
-<label>
-  <input type="checkbox"
-         id="colorOpCheckbox"
-         onchange="toggleOpColoring(this.checked)">
-  Color by Operator
-</label>
-<br>
-<!-- legend goes here when the box is ticked -->
-<div id="operatorLegend" style="margin:4px 0"></div>
+<div id="uratFilter" class="dependent">
+  <label>
+    <input type="checkbox" id="colorUratCheckbox" onchange="toggleUratColoring(this.checked)">
+    Color by URAT
+  </label>
+  <div id="uratLegend" style="margin-left: 20px; display: none;">
+    <span style="display:inline-block;width:11px;height:11px;background:#ff0000;border:1px solid #000;"></span> 2G&nbsp;
+    <span style="display:inline-block;width:11px;height:11px;background:#00a000;border:1px solid #000;"></span> LTE
+  </div>
+</div>
+<div id="showSatWrapper" class="dependent">
+  <label><input type="checkbox" id="showSatCheckbox" onchange="toggleSatMarkers(this.checked)"> Show # Satellites</label>
+</div>
+
+<div id="colorOpWrapper" class="dependent">
+  <label><input type="checkbox" id="colorOpCheckbox" onchange="toggleOpColoring(this.checked)"> Color by Operator</label>
+  <div id="operatorLegend" style="margin:4px 0 0 20px;"></div>
+</div>
+<div id="satFilter" style="display: none;">
+  <label>
+    <input type="checkbox"
+           id="showSatCheckbox"
+           onchange="toggleSatMarkers(this.checked)">
+    Show # Satellites
+  </label>
+</div>
+<div id="seqMsgControls">
+  <div>
+    <label><input type="checkbox" id="rssiColorCheckbox" onchange="toggleRssiColoring(this.checked)"> Show RSSI (Max)</label>
+    <div id="rssiLegend" style="margin-left: 20px; display: none;">...</div>
+  </div>
+  <div>
+    <label><input type="checkbox" id="minRssiCheckbox" onchange="toggleMinRssiColoring(this.checked)"> Min RSSI</label>
+    <div id="minRssiLegend" style="margin-left: 20px; display: none;">...</div>
+  </div>
+  <label><input type="checkbox" onchange="toggleChargeMarkers(this.checked)"> Charge</label>
+  <br>
+  <label><input type="checkbox" onchange="toggleTemperatureMarkers(this.checked)"> Temperature</label>
+  <br>
+  <label><input type="checkbox" onchange="toggleHumidityMarkers(this.checked)"> Humidity</label>
+</div>
 
     <label><input type="checkbox" onchange="toggleAccuracyRings(this.checked)"> Show Accuracy Rings</label>
     <br>
@@ -231,6 +267,12 @@
     <textarea id="pastureImportArea" placeholder="Paste pasture data here..."></textarea>
     <br>
     <button onclick="loadPastureData()">Load Pastures</button>
+<br><br>
+<button onclick="toggleSeqMsgImportBox()">Import Seq Messages</button>
+<br>
+<textarea id="seqMsgImportArea" placeholder="Paste seq_msg data here..." style="width: 100%; height: 150px; display: none;"></textarea>
+<br>
+<button onclick="loadSeqMsgData()">Load Seq Messages</button>
     <div id="deviceList"></div>
     <div style="margin-top: 10px;">
       <input type="color" id="bulkColorPicker" value="#003f8a" />
@@ -287,6 +329,10 @@
     let colorByUrat = false; 
     let showSatMarkers = false;   // master switch
     let colorByOp = false; 
+    let colorByRssi = false;
+    let rssiMarkers = [];  // to manage RSSI markers on map
+    let minRssiMarkers = [], chargeMarkers = [], tempMarkers = [], humidityMarkers = [];
+
 
 const opColors = {};
 const satMin = 1;             // expected range
@@ -295,7 +341,7 @@ const satMax = 40;
 const uratColors = {           // palette
   0: '#ff0000',   // 2 G  (GSM)   → red
   3: '#ff0000',   // 2 G  (EDGE)  → red
-  7: '##00a000'    // LTE          → green
+  7: '#00a000'    // LTE          → green
   // add more codes if needed
 };
 
@@ -418,6 +464,202 @@ function toggleSatMarkers(checked) {
   }
 }
 
+function toggleRssiColoring(checked) {
+  colorByRssi = checked;
+  clearAnimation();
+
+  rssiMarkers.forEach(m => map.removeLayer(m));
+  rssiMarkers = [];
+
+  // Update the RSSI Legend content!
+  const rssiLegend = document.getElementById('rssiLegend');
+  if (checked) {
+    rssiLegend.innerHTML = `
+      <div style="display:flex;align-items:center;">
+        <span style="width:12px;height:12px;background:red;border:1px solid #000;margin-right:4px;"></span> <= 10
+      </div>
+      <div style="display:flex;align-items:center;">
+        <span style="width:12px;height:12px;background:orange;border:1px solid #000;margin-right:4px;"></span> <= 20
+      </div>
+      <div style="display:flex;align-items:center;">
+        <span style="width:12px;height:12px;background:green;border:1px solid #000;margin-right:4px;"></span> <= 31
+      </div>
+    `;
+  } else {
+    rssiLegend.innerHTML = ""; // Clear it if unchecked
+  }
+
+  if (!colorByRssi) return;
+
+  Object.entries(seqMsgData).forEach(([device_id, messages]) => {
+    messages.forEach(msg => {
+      const strength = msg.xGprsRssi_ucMaxRSSI;
+      let color = 'gray';
+      if (strength <= 10) color = 'red';
+      else if (strength <= 20) color = 'orange';
+      else if (strength <= 31) color = 'green';
+
+      const marker = L.circleMarker([msg.lat, msg.lon], {
+        radius: 6,
+        color: 'black',
+        weight: 1,
+        fillColor: color,
+        fillOpacity: 0.9
+      }).addTo(map);
+
+      marker.bindPopup(`
+        <b>Device:</b> ${device_id}<br>
+        <b>Time:</b> ${msg.timeObj.toLocaleString()}<br>
+        <b>RSSI Max:</b> ${strength}<br>
+        <b>Temp:</b> ${msg.temperature} °C<br>
+        <b>Humidity:</b> ${msg.humidity} %
+      `);
+
+      rssiMarkers.push(marker);
+    });
+  });
+}
+
+function toggleMinRssiColoring(checked) {
+  clearAnimation();
+  minRssiMarkers.forEach(m => map.removeLayer(m));
+  minRssiMarkers = [];
+
+  // Update the Min RSSI Legend content!
+  const minRssiLegend = document.getElementById('minRssiLegend');
+  if (checked) {
+    minRssiLegend.innerHTML = `
+      <div style="display:flex;align-items:center;">
+        <span style="width:12px;height:12px;background:red;border:1px solid #000;margin-right:4px;"></span> <= 10
+      </div>
+      <div style="display:flex;align-items:center;">
+        <span style="width:12px;height:12px;background:orange;border:1px solid #000;margin-right:4px;"></span> <= 20
+      </div>
+      <div style="display:flex;align-items:center;">
+        <span style="width:12px;height:12px;background:green;border:1px solid #000;margin-right:4px;"></span> <= 31
+      </div>
+    `;
+  } else {
+    minRssiLegend.innerHTML = ""; // Clear it if unchecked
+  }
+
+  if (!checked) return;
+
+  Object.values(seqMsgData).forEach(messages => {
+    messages.forEach(msg => {
+      const rssi = msg.xGprsRssi_ucMinRSSI;
+      let color = 'gray';
+      if (rssi <= 10) color = 'red';
+      else if (rssi <= 20) color = 'orange';
+      else if (rssi <= 31) color = 'green';
+
+      const marker = L.circleMarker([msg.lat, msg.lon], {
+        radius: 6,
+        color: 'black',
+        weight: 1,
+        fillColor: color,
+        fillOpacity: 0.9
+      }).bindPopup(`Min RSSI: ${rssi}`).addTo(map);
+
+      minRssiMarkers.push(marker);
+    });
+  });
+}
+
+
+function toggleChargeMarkers(checked) {
+  clearAnimation();
+  chargeMarkers.forEach(m => map.removeLayer(m));
+  chargeMarkers = [];
+  if (!checked) return;
+
+  Object.values(seqMsgData).forEach(messages => {
+    messages.forEach(msg => {
+      const charge = msg.usChargeMah;
+const minD = 10, maxD = 50, chargeMax = 100;
+const size = minD + (Math.min(charge, chargeMax) / chargeMax) * (maxD - minD);
+
+const marker = L.divIcon({
+  html: `<div style="
+    width:${size}px; height:${size}px;
+    line-height:${size}px;
+    background:#00a000; color:white;
+    border:1px solid black;
+    border-radius:50%;
+    text-align:center;
+    font-size:${Math.max(10, size * 0.4)}px;">
+    ${charge}
+  </div>`,
+  className: 'custom-marker-icon'
+});
+
+
+      chargeMarkers.push(L.marker([msg.lat, msg.lon], { icon: marker }).addTo(map));
+    });
+  });
+}
+
+function toggleTemperatureMarkers(checked) {
+  clearAnimation();
+  tempMarkers.forEach(m => map.removeLayer(m));
+  tempMarkers = [];
+  if (!checked) return;
+
+  Object.values(seqMsgData).forEach(messages => {
+    messages.forEach(msg => {
+      const val = Math.round(msg.temperature);  // rounds to nearest integer
+      const size = Math.min(Math.max(val, 10), 50); // Assuming 0–100 °C
+
+      const marker = L.divIcon({
+        html: `<div style="
+  width:${size}px; height:${size}px;
+  line-height:${size}px;
+  background:#FF4136; color:white;
+  border:1px solid black;
+  border-radius:50%;
+  text-align:center;
+  font-size:${Math.max(10, size * 0.4)}px;">
+  ${Math.round(msg.temperature)}
+</div>`,
+        className: 'custom-marker-icon'
+      });
+
+      tempMarkers.push(L.marker([msg.lat, msg.lon], { icon: marker }).addTo(map));
+    });
+  });
+}
+
+function toggleHumidityMarkers(checked) {
+  clearAnimation();
+  humidityMarkers.forEach(m => map.removeLayer(m));
+  humidityMarkers = [];
+  if (!checked) return;
+
+  Object.values(seqMsgData).forEach(messages => {
+    messages.forEach(msg => {
+      const val = Math.round(msg.humidity / 10);
+      const size = Math.min(Math.max(val, 10), 50); // Assuming 0–100 %
+
+      const marker = L.divIcon({
+        html: `<div style="
+          width:${size}px; height:${size}px;
+          line-height:${size}px;
+          background:#1E90FF; color:white;
+          border:1px solid black;
+          border-radius:50%;
+          text-align:center;
+          font-size:${Math.max(10, size * 0.4)}px;">
+          ${Math.round(msg.humidity / 10)}
+        </div>`,
+        className: 'custom-marker-icon'
+      });
+
+      humidityMarkers.push(L.marker([msg.lat, msg.lon], { icon: marker }).addTo(map));
+    });
+  });
+}
+
+
 function updateOperatorLegend() {
   const div = document.getElementById('operatorLegend');
   div.innerHTML = '';
@@ -434,6 +676,7 @@ function updateOperatorLegend() {
 function toggleOpColoring(checked) {
   colorByOp = checked;
   updateOperatorLegend();
+  document.getElementById('operatorLegend').style.display = checked ? 'block' : 'none';
   allPositionsShown ? showAllPositions() : updateFrame(currentIndex);
 }
 
@@ -804,6 +1047,7 @@ const operator = (parts.length >= 13 && parts[12] !== '')
           operator
         };
       });
+
       deviceData = {};
       deviceStats = {};
       deviceMarkers = {};
@@ -827,6 +1071,64 @@ const operator = (parts.length >= 13 && parts[12] !== '')
       populateFenceStatusFilter();
       document.getElementById('importArea').style.display = 'none';
     }
+
+let seqMsgData = {}; // Store parsed seq_msg data
+
+function toggleSeqMsgImportBox() {
+  document.getElementById('seqMsgImportArea').style.display = 'block';
+  document.getElementById('importArea').style.display = 'none';
+  document.getElementById('pastureImportArea').style.display = 'none';
+}
+
+function loadSeqMsgData() {
+  document.getElementById('seqMsgControls').style.display = 'none'; // Hide first
+
+  const raw = document.getElementById('seqMsgImportArea').value;
+  const lines = raw.replace(/\[nl\]/g, '\n')
+                   .split('\n')
+                   .filter(l => l.trim() && !l.startsWith('time'));
+  const parsed = lines.map(line => {
+    const parts = line.split(',');
+    const timeStr = parts[0];
+    const device_id = parts[1];
+    const xGprsRssi_ucMinRSSI = parseInt(parts[2], 10);
+    const xGprsRssi_ucMaxRSSI = parseInt(parts[3], 10);
+    const usChargeMah = parseInt(parts[4], 10);
+    const temperature = parseFloat(parts[5]) / 100;
+    const humidity = parseFloat(parts[6]) / 100;
+    const lon = parseFloat(parts[7]) / 1e7;
+    const lat = parseFloat(parts[8]) / 1e7;
+    const timeObj = new Date(timeStr);
+    return {
+      device_id,
+      timeObj,
+      timeMs: timeObj.getTime(),
+      lat,
+      lon,
+      xGprsRssi_ucMinRSSI,
+      xGprsRssi_ucMaxRSSI,
+      usChargeMah,
+      temperature,
+      humidity
+    };
+  });
+
+  seqMsgData = {};  // Reset
+  parsed.forEach(msg => {
+    if (!seqMsgData[msg.device_id]) seqMsgData[msg.device_id] = [];
+    seqMsgData[msg.device_id].push(msg);
+  });
+
+  Object.values(seqMsgData).forEach(arr =>
+    arr.sort((a, b) => a.timeMs - b.timeMs)
+  );
+
+  if (parsed.length > 0) {
+    document.getElementById('seqMsgControls').style.display = 'block';
+    updateLegendVisibility(); // <-- 💥 This is the important line
+  }
+  document.getElementById('seqMsgImportArea').style.display = 'none';
+}
 
     /* Populate the eFenceStatus filter */
     function populateFenceStatusFilter() {
@@ -1184,30 +1486,54 @@ const operator = (parts.length >= 13 && parts[12] !== '')
 
     /* Handler for "Show All Positions" checkbox */
     function handleShowAllPositionsChange(checked) {
-      if (checked) {
-        allPositionsShown = true;
-        showAllPositions();
-      } else {
-        allPositionsShown = false;
-        allPositionMarkers.forEach(m => map.removeLayer(m));
-        allPositionMarkers = [];
-        allAccuracyRings.forEach(r => map.removeLayer(r));
-        allAccuracyRings = [];
-      }
-    }
+  allPositionsShown = checked;
+
+  // Remove or show all markers
+  if (checked) {
+    showAllPositions();
+  } else {
+    allPositionMarkers.forEach(m => map.removeLayer(m));
+    allPositionMarkers = [];
+    allAccuracyRings.forEach(r => map.removeLayer(r));
+    allAccuracyRings = [];
+  }
+
+  // Control visibility of dependent controls
+  document.getElementById('gpsModeFilter').style.display = checked ? 'block' : 'none';
+  document.getElementById('uratFilter').style.display = checked ? 'block' : 'none';
+  document.getElementById('showSatWrapper').style.display = checked ? 'block' : 'none';
+  document.getElementById('colorOpWrapper').style.display = checked ? 'block' : 'none';
+  document.getElementById('operatorLegend').style.display = (checked && colorByOp) ? 'block' : 'none';
+}
+
+
+
+function updateLegendVisibility() {
+  document.getElementById('gpsModeLegend').style.display = document.getElementById('colorGpsModeCheckbox').checked ? 'block' : 'none';
+  document.getElementById('uratLegend').style.display = document.getElementById('colorUratCheckbox').checked ? 'block' : 'none';
+  document.getElementById('rssiLegend').style.display = document.getElementById('rssiColorCheckbox').checked ? 'block' : 'none';
+  document.getElementById('minRssiLegend').style.display = document.getElementById('minRssiCheckbox').checked ? 'block' : 'none';
+}
+['colorGpsModeCheckbox', 'colorUratCheckbox', 'rssiColorCheckbox', 'minRssiCheckbox'].forEach(id => {
+  document.getElementById(id).addEventListener('change', updateLegendVisibility);
+});
+
+
   </script>
   <script>
-    /* If there's any "pastureData" in the URL, auto-load it */
-    window.addEventListener('DOMContentLoaded', (event) => {
-      const params = new URLSearchParams(window.location.search);
-      const pastureData = params.get('pastureData');
-      if (pastureData) {
-        const decodedData = decodeURIComponent(pastureData);
-        document.getElementById('pastureImportArea').value = decodedData;
-        loadPastureData();
-      }
-    });
-  </script>
+  window.addEventListener('DOMContentLoaded', (event) => {
+    const params = new URLSearchParams(window.location.search);
+    const pastureData = params.get('pastureData');
+    if (pastureData) {
+      const decodedData = decodeURIComponent(pastureData);
+      document.getElementById('pastureImportArea').value = decodedData;
+      loadPastureData();
+    }
+
+    // <-- THIS must be outside the 'if' block, so it runs ALWAYS:
+    handleShowAllPositionsChange(false);
+  });
+</script>
   <!-- Login Script -->
   <script>
     const FIXED_USERNAME = 'ImNotAnAdmin';
